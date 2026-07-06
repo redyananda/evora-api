@@ -1,0 +1,245 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// Enums
+// ============================================================
+
+enum UserRole {
+  CUSTOMER
+  ORGANIZER
+  ADMIN
+}
+
+enum TransactionStatus {
+  WAITING_FOR_PAYMENT
+  WAITING_FOR_ADMIN_CONFIRMATION
+  DONE
+  REJECTED
+  EXPIRED
+  CANCELED
+}
+
+// ============================================================
+// Users & Auth
+// ============================================================
+
+model User {
+  id                 Int       @id @default(autoincrement()) @map("user_id")
+  email              String    @unique
+  password           String
+  firstName          String    @map("first_name")
+  lastName           String    @map("last_name")
+  referralCode       String    @unique @map("referral_code")
+  referredById       Int?      @map("referred_by")
+  profilePicture     String?   @map("profile_picture")
+  phoneNumber        String?   @map("phone_number")
+  userRole           UserRole  @default(CUSTOMER) @map("user_role")
+  address            String?
+  resetToken         String?   @map("reset_token")
+  resetTokenExpires  DateTime? @map("reset_token_expires")
+  userPoint          Int       @default(0) @map("user_point")
+  createdAt          DateTime  @default(now()) @map("created_at")
+  updatedAt          DateTime  @updatedAt @map("updated_at")
+
+  // Self-relation: referral
+  referredBy User?  @relation("UserReferrals", fields: [referredById], references: [id])
+  referrals  User[] @relation("UserReferrals")
+
+  organizer    Organizer?
+  points       Point[]
+  userCoupons  UserCoupon[]
+  transactions Transaction[]
+  reviews      Review[]
+
+  @@map("users")
+}
+
+model Organizer {
+  id                   Int      @id @default(autoincrement()) @map("organizer_id")
+  userId               Int      @unique @map("user_id")
+  organizerName        String   @map("organizer_name")
+  organizerDescription String?  @map("organizer_description")
+  organizerLogo        String?  @map("organizer_logo")
+  rating               Float    @default(0) @map("rating")
+  totalReviews         Int      @default(0) @map("total_reviews")
+  createdAt            DateTime @default(now()) @map("created_at")
+  updatedAt            DateTime @updatedAt @map("updated_at")
+
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  events Event[]
+
+  @@map("organizers")
+}
+
+// ============================================================
+// Events & Catalog
+// ============================================================
+
+model Category {
+  id           Int      @id @default(autoincrement()) @map("category_id")
+  categoryName String   @unique @map("category_name")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  events Event[]
+
+  @@map("categories")
+}
+
+model Event {
+  id             Int      @id @default(autoincrement()) @map("event_id")
+  eventName      String   @map("event_name")
+  description    String
+  categoryId     Int      @map("category_id")
+  price          Int      @default(0) // IDR; 0 = free event
+  location       String
+  startDate      DateTime @map("start_date")
+  endDate        DateTime @map("end_date")
+  totalSeats     Int      @map("total_seats")
+  availableSeats Int      @map("available_seats")
+  organizerId    Int      @map("organizer_id")
+  thumbnail      String?
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+
+  category     Category      @relation(fields: [categoryId], references: [id])
+  organizer    Organizer     @relation(fields: [organizerId], references: [id], onDelete: Cascade)
+  vouchers     Voucher[]
+  transactions Transaction[]
+
+  @@index([categoryId])
+  @@index([organizerId])
+  @@index([startDate])
+  @@map("events")
+}
+
+// ============================================================
+// Promotions: Vouchers (per-event, by organizer)
+// ============================================================
+
+model Voucher {
+  id               Int      @id @default(autoincrement()) @map("voucher_id")
+  eventId          Int      @map("event_id")
+  code             String
+  discount         Int // IDR amount off
+  startDate        DateTime @map("start_date")
+  endDate          DateTime @map("end_date")
+  availableVoucher Int      @map("available_voucher")
+  total            Int
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  event        Event         @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+
+  @@unique([eventId, code])
+  @@map("vouchers")
+}
+
+// ============================================================
+// Rewards: Points (referral) & Coupons (system-wide)
+// ============================================================
+
+model Point {
+  id        Int      @id @default(autoincrement()) @map("point_id")
+  userId    Int      @map("user_id")
+  amount    Int
+  expiredAt DateTime @map("expired_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiredAt])
+  @@map("points")
+}
+
+model Coupon {
+  id        Int      @id @default(autoincrement()) @map("coupon_id")
+  code      String   @unique
+  discount  Int // IDR amount off; usable on all events
+  expiredAt DateTime @map("expired_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  userCoupons  UserCoupon[]
+  transactions Transaction[]
+
+  @@map("coupons")
+}
+
+model UserCoupon {
+  id        Int       @id @default(autoincrement()) @map("user_coupon_id")
+  userId    Int       @map("user_id")
+  couponId  Int       @map("coupon_id")
+  isUsed    Boolean   @default(false) @map("is_used")
+  usedAt    DateTime? @map("used_at")
+  createdAt DateTime  @default(now()) @map("created_at")
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  coupon Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_coupons")
+}
+
+// ============================================================
+// Transactions
+// ============================================================
+
+model Transaction {
+  id              Int               @id @default(autoincrement()) @map("transaction_id")
+  userId          Int               @map("user_id")
+  eventId         Int               @map("event_id")
+  voucherId       Int?              @map("voucher_id")
+  couponId        Int?              @map("coupon_id")
+  quantity        Int
+  status          TransactionStatus @default(WAITING_FOR_PAYMENT)
+  totalPrice      Int               @map("total_price")
+  pointUsed       Int?              @map("point_used")
+  finalPrice      Int               @map("final_price")
+  paymentProof    String?           @map("payment_proof")
+  paymentDeadline DateTime          @map("payment_deadline")
+  paidAt          DateTime?         @map("paid_at")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+
+  user    User     @relation(fields: [userId], references: [id])
+  event   Event    @relation(fields: [eventId], references: [id])
+  voucher Voucher? @relation(fields: [voucherId], references: [id])
+  coupon  Coupon?  @relation(fields: [couponId], references: [id])
+  review  Review?
+
+  @@index([userId])
+  @@index([eventId])
+  @@index([status])
+  @@map("transactions")
+}
+
+// ============================================================
+// Reviews & Ratings
+// ============================================================
+
+model Review {
+  id            Int      @id @default(autoincrement()) @map("review_id")
+  userId        Int      @map("user_id")
+  transactionId Int      @unique @map("transaction_id")
+  rating        Int // 1-5
+  comment       String?
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  user        User        @relation(fields: [userId], references: [id])
+  transaction Transaction @relation(fields: [transactionId], references: [id])
+
+  @@index([userId])
+  @@map("reviews")
+}
