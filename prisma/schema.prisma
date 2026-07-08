@@ -31,6 +31,15 @@ enum TransactionStatus {
   CANCELED
 }
 
+enum EventCategory {
+  MUSIC
+  TECH_AND_INNOVATION
+  FOOD_AND_DRINK
+  ARTS_AND_CULTURE
+  BUSINESS
+  WELLNESS
+}
+
 // ============================================================
 // Users & Auth
 // ============================================================
@@ -41,7 +50,7 @@ model User {
   password           String
   firstName          String    @map("first_name")
   lastName           String    @map("last_name")
-  referralCode       String    @unique @map("referral_code")
+  referralCode       String?    @unique @map("referral_code")
   referredById       Int?      @map("referred_by")
   profilePicture     String?   @map("profile_picture")
   phoneNumber        String?   @map("phone_number")
@@ -58,12 +67,29 @@ model User {
   referrals  User[] @relation("UserReferrals")
 
   organizer    Organizer?
+  addresses    Address[]
   points       Point[]
   userCoupons  UserCoupon[]
   transactions Transaction[]
   reviews      Review[]
 
   @@map("users")
+}
+
+model Address {
+  id         Int      @id @default(autoincrement()) @map("address_id")
+  userId     Int?     @map("user_id")
+  label      String?
+  street     String
+  city       String
+  postCode   String?  @map("post_code")
+  createdAt  DateTime @default(now()) @map("created_at")
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("addresses")
 }
 
 model Organizer {
@@ -87,22 +113,13 @@ model Organizer {
 // Events & Catalog
 // ============================================================
 
-model Category {
-  id           Int      @id @default(autoincrement()) @map("category_id")
-  categoryName String   @unique @map("category_name")
-  createdAt    DateTime @default(now()) @map("created_at")
-
-  events Event[]
-
-  @@map("categories")
-}
-
 model Event {
   id             Int      @id @default(autoincrement()) @map("event_id")
-  eventName      String   @map("event_name")
+  eventName      String        @map("event_name")
   description    String
-  categoryId     Int      @map("category_id")
-  price          Int      @default(0) // IDR; 0 = free event
+  category       EventCategory
+  price          Int           @default(0) // IDR; 0 = free event
+  venue          String
   location       String
   startDate      DateTime @map("start_date")
   endDate        DateTime @map("end_date")
@@ -113,12 +130,11 @@ model Event {
   createdAt      DateTime @default(now()) @map("created_at")
   updatedAt      DateTime @updatedAt @map("updated_at")
 
-  category     Category      @relation(fields: [categoryId], references: [id])
   organizer    Organizer     @relation(fields: [organizerId], references: [id], onDelete: Cascade)
   vouchers     Voucher[]
   transactions Transaction[]
 
-  @@index([categoryId])
+  @@index([category])
   @@index([organizerId])
   @@index([startDate])
   @@map("events")
