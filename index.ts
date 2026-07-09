@@ -15,4 +15,4 @@ app.use("/events", eventRoutes);
 
 app.listen(PORT, () => {
   console.log(`Server running on port : ${PORT}`);
-});
+}); 

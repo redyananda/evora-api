@@ -45,22 +45,22 @@ enum EventCategory {
 // ============================================================
 
 model User {
-  id                 Int       @id @default(autoincrement()) @map("user_id")
-  email              String    @unique
-  password           String
-  firstName          String    @map("first_name")
-  lastName           String    @map("last_name")
-  referralCode       String?    @unique @map("referral_code")
-  referredById       Int?      @map("referred_by")
-  profilePicture     String?   @map("profile_picture")
-  phoneNumber        String?   @map("phone_number")
-  userRole           UserRole  @default(CUSTOMER) @map("user_role")
-  address            String?
-  resetToken         String?   @map("reset_token")
-  resetTokenExpires  DateTime? @map("reset_token_expires")
-  userPoint          Int       @default(0) @map("user_point")
-  createdAt          DateTime  @default(now()) @map("created_at")
-  updatedAt          DateTime  @updatedAt @map("updated_at")
+  id                Int       @id @default(autoincrement()) @map("user_id")
+  email             String    @unique
+  password          String
+  firstName         String    @map("first_name")
+  lastName          String    @map("last_name")
+  referralCode      String?   @unique @map("referral_code")
+  referredById      Int?      @map("referred_by")
+  profilePicture    String?   @map("profile_picture")
+  phoneNumber       String?   @map("phone_number")
+  userRole          UserRole  @default(CUSTOMER) @map("user_role")
+  address           String?
+  resetToken        String?   @map("reset_token")
+  resetTokenExpires DateTime? @map("reset_token_expires")
+  userPoint         Int       @default(0) @map("user_point")
+  createdAt         DateTime  @default(now()) @map("created_at")
+  updatedAt         DateTime  @updatedAt @map("updated_at")
 
   // Self-relation: referral
   referredBy User?  @relation("UserReferrals", fields: [referredById], references: [id])
@@ -77,14 +77,14 @@ model User {
 }
 
 model Address {
-  id         Int      @id @default(autoincrement()) @map("address_id")
-  userId     Int?     @map("user_id")
-  label      String?
-  street     String
-  city       String
-  postCode   String?  @map("post_code")
-  createdAt  DateTime @default(now()) @map("created_at")
-  updatedAt  DateTime @updatedAt @map("updated_at")
+  id        Int      @id @default(autoincrement()) @map("address_id")
+  userId    Int?     @map("user_id")
+  label     String?
+  street    String
+  city      String
+  postCode  String?  @map("post_code")
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
 
   user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -114,21 +114,22 @@ model Organizer {
 // ============================================================
 
 model Event {
-  id             Int      @id @default(autoincrement()) @map("event_id")
+  id             Int           @id @default(autoincrement()) @map("event_id")
   eventName      String        @map("event_name")
   description    String
+  slug           String        @unique
   category       EventCategory
-  price          Int           @default(0) // IDR; 0 = free event
+  price          Int           @default(0) 
   venue          String
   location       String
-  startDate      DateTime @map("start_date")
-  endDate        DateTime @map("end_date")
-  totalSeats     Int      @map("total_seats")
-  availableSeats Int      @map("available_seats")
-  organizerId    Int      @map("organizer_id")
+  startDate      DateTime      @map("start_date")
+  endDate        DateTime      @map("end_date")
+  totalSeats     Int           @map("total_seats")
+  availableSeats Int           @map("available_seats")
+  organizerId    Int           @map("organizer_id")
   thumbnail      String?
-  createdAt      DateTime @default(now()) @map("created_at")
-  updatedAt      DateTime @updatedAt @map("updated_at")
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
 
   organizer    Organizer     @relation(fields: [organizerId], references: [id], onDelete: Cascade)
   vouchers     Voucher[]
@@ -183,7 +184,7 @@ model Point {
 model Coupon {
   id        Int      @id @default(autoincrement()) @map("coupon_id")
   code      String   @unique
-  discount  Int // IDR amount off; usable on all events
+  discount  Int 
   expiredAt DateTime @map("expired_at")
   createdAt DateTime @default(now()) @map("created_at")
 
