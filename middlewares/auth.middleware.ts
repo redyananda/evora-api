@@ -17,13 +17,16 @@ export const verifyToken = (
       throw new ApiError("Akses ditolak: token tidak ditemukan", 401);
     }
 
-    const token = authHeader.split(" ")[1];
+    const token = authHeader.slice("Bearer ".length).trim();
+    if (!token) {
+      throw new ApiError("Akses ditolak: token tidak ditemukan", 401);
+    }
     const secret = process.env.JWT_SECRET;
     if (!secret) {
       throw new ApiError("JWT secret tidak dikonfigurasi", 500);
     }
 
-    const decoded = jwt.verify(token, secret) as {
+    const decoded = jwt.verify(token, secret) as unknown as {
       id: number;
       email: string;
       role: string;
@@ -34,10 +37,10 @@ export const verifyToken = (
     req.user = decoded;
     next();
   } catch (error) {
-    if (error instanceof jwt.JsonWebTokenError) {
-      next(new ApiError("Token tidak valid", 401));
-    } else if (error instanceof jwt.TokenExpiredError) {
+    if (error instanceof jwt.TokenExpiredError) {
       next(new ApiError("Token sudah kedaluwarsa", 401));
+    } else if (error instanceof jwt.JsonWebTokenError) {
+      next(new ApiError("Token tidak valid", 401));
     } else {
       next(error);
     }
