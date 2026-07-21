@@ -76,7 +76,7 @@ export const getProfileService = async (userId: number) => {
     },
   });
 
-  if (!user) throw new ApiError("Pengguna tidak ditemukan", 404);
+  if (!user) throw new ApiError("User not found", 404);
 
   const { _count, userCoupons, ...profile } = user;
   return {
@@ -107,24 +107,24 @@ export const updateProfileService = async (
     where: { id: userId },
     include: { organizer: true },
   });
-  if (!currentUser) throw new ApiError("Pengguna tidak ditemukan", 404);
+  if (!currentUser) throw new ApiError("User not found", 404);
 
   const userData: Prisma.UserUpdateInput = {};
   if (payload.firstName !== undefined) {
-    if (!payload.firstName.trim()) throw new ApiError("Nama depan wajib diisi", 400);
+    if (!payload.firstName.trim()) throw new ApiError("First name is required", 400);
     userData.firstName = payload.firstName.trim();
   }
   if (payload.lastName !== undefined) {
-    if (!payload.lastName.trim()) throw new ApiError("Nama belakang wajib diisi", 400);
+    if (!payload.lastName.trim()) throw new ApiError("Last name is required", 400);
     userData.lastName = payload.lastName.trim();
   }
   if (payload.email !== undefined) {
     const email = payload.email.trim().toLowerCase();
     if (!/^\S+@\S+\.\S+$/.test(email)) {
-      throw new ApiError("Format email tidak valid", 400);
+      throw new ApiError("Invalid email format", 400);
     }
     const owner = await prisma.user.findUnique({ where: { email } });
-    if (owner && owner.id !== userId) throw new ApiError("Email sudah digunakan", 409);
+    if (owner && owner.id !== userId) throw new ApiError("Email is already in use", 409);
     userData.email = email;
   }
   if (payload.phoneNumber !== undefined) {
@@ -138,7 +138,7 @@ export const updateProfileService = async (
       payload.profilePicture &&
       (!isValidProfilePicture(payload.profilePicture) || payload.profilePicture.length > 2_800_000)
     ) {
-      throw new ApiError("Foto profil harus berupa URL atau gambar maksimal 2 MB", 400);
+      throw new ApiError("Profile picture must be a URL or an image up to 2 MB", 400);
     }
     userData.profilePicture = payload.profilePicture || null;
   }
@@ -148,7 +148,7 @@ export const updateProfileService = async (
     payload.organizerDescription !== undefined ||
     payload.organizerLogo !== undefined;
   if (hasOrganizerPayload && !currentUser.organizer) {
-    throw new ApiError("Data organizer hanya dapat diubah oleh event organizer", 403);
+    throw new ApiError("Organizer data can only be changed by an event organizer", 403);
   }
 
   await prisma.$transaction(async (tx) => {
@@ -158,7 +158,7 @@ export const updateProfileService = async (
       const organizerData: Prisma.OrganizerUpdateInput = {};
       if (payload.organizerName !== undefined) {
         if (!payload.organizerName.trim()) {
-          throw new ApiError("Nama organisasi wajib diisi", 400);
+          throw new ApiError("Organization name is required", 400);
         }
         organizerData.organizerName = payload.organizerName.trim();
       }
@@ -185,16 +185,16 @@ export const changePasswordService = async (
   newPassword: string
 ) => {
   if (newPassword.length < 8) {
-    throw new ApiError("Password baru minimal 8 karakter", 400);
+    throw new ApiError("New password must be at least 8 characters", 400);
   }
   if (currentPassword === newPassword) {
-    throw new ApiError("Password baru harus berbeda dari password saat ini", 400);
+    throw new ApiError("New password must be different from the current password", 400);
   }
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) throw new ApiError("Pengguna tidak ditemukan", 404);
+  if (!user) throw new ApiError("User not found", 404);
   if (!(await argon2.verify(user.password, currentPassword))) {
-    throw new ApiError("Password saat ini salah", 400);
+    throw new ApiError("Current password is incorrect", 400);
   }
 
   await prisma.user.update({
@@ -206,4 +206,3 @@ export const changePasswordService = async (
     },
   });
 };
-

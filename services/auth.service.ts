@@ -55,33 +55,33 @@ export const registerService = async (payload: RegisterPayload) => {
   const usedReferralCode = payload.referralCode?.trim().toUpperCase();
 
   if (!firstName || !lastName) {
-    throw new ApiError("Nama depan dan nama belakang wajib diisi", 400);
+    throw new ApiError("First name and last name are required", 400);
   }
   if (payload.password.length < 8) {
-    throw new ApiError("Password minimal 8 karakter", 400);
+    throw new ApiError("Password must be at least 8 characters", 400);
   }
 
   const existing = await prisma.user.findUnique({ where: { email } });
   if (existing) {
-    throw new ApiError("Email sudah terdaftar", 409);
+    throw new ApiError("Email is already registered", 409);
   }
 
   let referredById: number | undefined;
   if (usedReferralCode) {
     if (payload.role !== "CUSTOMER") {
-      throw new ApiError("Hanya pelanggan yang bisa menggunakan kode referral", 400);
+      throw new ApiError("Only customers can use a referral code", 400);
     }
     const referrer = await prisma.user.findUnique({
       where: { referralCode: usedReferralCode },
     });
     if (!referrer) {
-      throw new ApiError("Kode referral tidak valid", 400);
+      throw new ApiError("Invalid referral code", 400);
     }
     referredById = referrer.id;
   }
 
   if (payload.role === "ORGANIZER" && !payload.organizerName?.trim()) {
-    throw new ApiError("Nama organisasi wajib diisi untuk event organizer", 400);
+    throw new ApiError("Organization name is required for event organizers", 400);
   }
 
   const hashedPassword = await argon2.hash(payload.password);
@@ -165,12 +165,12 @@ export const loginService = async (payload: LoginPayload) => {
     where: { email: payload.email.trim().toLowerCase() },
   });
   if (!user || !(await argon2.verify(user.password, payload.password))) {
-    throw new ApiError("Email atau password salah", 401);
+    throw new ApiError("Incorrect email or password", 401);
   }
 
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    throw new ApiError("JWT secret tidak dikonfigurasi", 500);
+    throw new ApiError("JWT secret is not configured", 500);
   }
 
   const userPoint = await syncActivePointBalance(user.id);
@@ -222,7 +222,7 @@ export const resetPasswordService = async (
   newPassword: string
 ) => {
   if (newPassword.length < 8) {
-    throw new ApiError("Password baru minimal 8 karakter", 400);
+    throw new ApiError("New password must be at least 8 characters", 400);
   }
 
   const user = await prisma.user.findFirst({
@@ -232,7 +232,7 @@ export const resetPasswordService = async (
     },
   });
   if (!user) {
-    throw new ApiError("Token reset tidak valid atau sudah kedaluwarsa", 400);
+    throw new ApiError("The reset token is invalid or has expired", 400);
   }
 
   await prisma.user.update({

@@ -7,7 +7,7 @@ import {
 import { ApiError } from "../utils/api-error.js";
 
 const getUserId = (req: Request): number => {
-  if (!req.user) throw new ApiError("Pengguna belum terautentikasi", 401);
+  if (!req.user) throw new ApiError("User is not authenticated", 401);
   return req.user.id;
 };
 
@@ -30,7 +30,7 @@ export const updateProfileController = async (
 ) => {
   try {
     const data = await updateProfileService(getUserId(req), req.body);
-    res.status(200).json({ message: "Profil berhasil diperbarui", data });
+    res.status(200).json({ message: "Profile updated successfully", data });
   } catch (error) {
     next(error);
   }
@@ -44,12 +44,11 @@ export const changePasswordController = async (
   try {
     const { currentPassword, newPassword } = req.body;
     if (!currentPassword || !newPassword) {
-      throw new ApiError("Password saat ini dan password baru wajib diisi", 400);
+      throw new ApiError("Current password and new password are required", 400);
     }
     await changePasswordService(getUserId(req), currentPassword, newPassword);
-    res.status(200).json({ message: "Password berhasil diubah" });
+    res.status(200).json({ message: "Password changed successfully" });
   } catch (error) {
     next(error);
   }
 };
-

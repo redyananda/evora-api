@@ -18,12 +18,12 @@ export const registerController = async (
 
     if (!firstName || !lastName || !email || !password || !role) {
       throw new ApiError(
-        "firstName, lastName, email, password, dan role wajib diisi",
+        "firstName, lastName, email, password, and role are required",
         400
       );
     }
     if (role !== "CUSTOMER" && role !== "ORGANIZER") {
-      throw new ApiError("Role harus CUSTOMER atau ORGANIZER", 400);
+      throw new ApiError("Role must be CUSTOMER or ORGANIZER", 400);
     }
 
     const result = await registerService({
@@ -38,8 +38,8 @@ export const registerController = async (
 
     res.status(201).json({
       message: result.coupon
-        ? "Registrasi berhasil. Kupon referral telah ditambahkan ke akun Anda."
-        : "Registrasi berhasil",
+        ? "Registration successful. A referral coupon has been added to your account."
+        : "Registration successful",
       data: result,
     });
   } catch (error) {
@@ -54,11 +54,11 @@ export const loginController = async (
   try {
     const { email, password } = req.body;
     if (!email || !password) {
-      throw new ApiError("Email dan password wajib diisi", 400);
+      throw new ApiError("Email and password are required", 400);
     }
 
     res.status(200).json({
-      message: "Login berhasil",
+      message: "Login successful",
       data: await loginService({ email, password }),
     });
   } catch (error) {
@@ -73,13 +73,13 @@ export const forgotPasswordController = async (
 ) => {
   try {
     if (!req.body.email) {
-      throw new ApiError("Email wajib diisi", 400);
+      throw new ApiError("Email is required", 400);
     }
 
     const result = await requestPasswordResetService(req.body.email);
     res.status(200).json({
       message:
-        "Jika email terdaftar, instruksi reset password telah dibuat dan berlaku selama 1 jam.",
+        "If the email is registered, password reset instructions have been created and are valid for 1 hour.",
       data:
         process.env.NODE_ENV === "production"
           ? undefined
@@ -98,10 +98,10 @@ export const resetPasswordController = async (
   try {
     const { token, newPassword } = req.body;
     if (!token || !newPassword) {
-      throw new ApiError("Token dan password baru wajib diisi", 400);
+      throw new ApiError("Token and new password are required", 400);
     }
     await resetPasswordService(token, newPassword);
-    res.status(200).json({ message: "Password berhasil direset" });
+    res.status(200).json({ message: "Password reset successfully" });
   } catch (error) {
     next(error);
   }
