@@ -5,6 +5,7 @@ import { eventRoutes } from "./routes/event.routes.js";
 import { authRoutes } from "./routes/auth.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import { profileRoutes } from "./routes/profile.routes.js";
+import { organizerRoutes } from "./routes/organizer.routes.js";
 
 const PORT = process.env.PORT || 8000;
 
@@ -17,6 +18,7 @@ app.use(express.json({ limit: "3mb" }));
 app.use("/auth", authRoutes);
 app.use("/events", eventRoutes);
 app.use("/profile", profileRoutes);
+app.use("/organizer", organizerRoutes);
 
 // ── Global error handler (must be last) ─────────────────────────────────────
 app.use(errorHandler);
