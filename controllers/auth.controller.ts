@@ -79,7 +79,7 @@ export const forgotPasswordController = async (
     const result = await requestPasswordResetService(req.body.email);
     res.status(200).json({
       message:
-        "If the email is registered, password reset instructions have been created and are valid for 1 hour.",
+        "If the email is registered, a password reset link has been sent and is valid for 1 hour.",
       data:
         process.env.NODE_ENV === "production"
           ? undefined

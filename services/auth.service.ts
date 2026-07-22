@@ -9,6 +9,7 @@ import {
   REFERRAL_POINT_REWARD,
   syncActivePointBalance,
 } from "./reward.service.js";
+import { sendPasswordResetEmail } from "./email.service.js";
 
 const generateCode = (length: number): string => {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
@@ -214,7 +215,18 @@ export const requestPasswordResetService = async (emailInput: string) => {
     },
   });
 
-  return { resetToken };
+  let emailDelivered = false;
+  try {
+    emailDelivered = await sendPasswordResetEmail({
+      recipientEmail: user.email,
+      customerName: `${user.firstName} ${user.lastName}`.trim(),
+      resetToken,
+    });
+  } catch (error) {
+    console.error(`[Email failed] Password reset for user #${user.id}`, error);
+  }
+
+  return { resetToken, emailDelivered };
 };
 
 export const resetPasswordService = async (
