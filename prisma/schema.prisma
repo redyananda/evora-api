@@ -19,7 +19,6 @@ datasource db {
 enum UserRole {
   CUSTOMER
   ORGANIZER
-  ADMIN
 }
 
 enum TransactionStatus {
