@@ -1,12 +1,36 @@
 import type { Prisma } from "../generated/prisma/client.js";
+import { EventCategory } from "../generated/prisma/enums.js";
+import { uploadImage } from "../lib/cloudinary.js";
 import { prisma } from "../lib/prisma.js";
 import type { PaginationQueryParams } from "../types/pagination.js";
 import { ApiError } from "../utils/api-error.js";
+import { slugify } from "../utils/slug.js";
+import { type CreateEventSchema } from "../validators/event.validator.js";
+import { nanoid } from "nanoid";
 
-export const getEventsService = async (query: PaginationQueryParams) => {
-  const { page, take, sortOrder, sortBy, search } = query;
+interface GetEventsQuery extends PaginationQueryParams {
+  category: string;
+}
+
+const normalizeCategory = (value: string) =>
+  value
+    .trim()
+    .toUpperCase()
+    .replace(/&/g, " AND ")
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+export const getEventsService = async (query: GetEventsQuery) => {
+  const { page, take, sortOrder, sortBy, search, category } = query;
+
+  const normalizedCategory = normalizeCategory(category);
+  const hasCategoryFilter = Boolean(category) && normalizedCategory !== "ALL";
+
   const whereClause: Prisma.EventWhereInput = {
     startDate: { gte: new Date() },
+    ...(hasCategoryFilter && {
+      category: normalizedCategory as EventCategory,
+    }),
   };
 
   const events = await prisma.event.findMany({
@@ -47,4 +71,41 @@ export const getEventBySlugService = async (slug: string) => {
     throw new ApiError("Event not found!", 404);
   }
   return event;
+};
+
+export const createEventService = async (
+  body: CreateEventSchema,
+  userId: number,
+  thumbnail: Express.Multer.File,
+) => {
+  
+  const organizer = await prisma.organizer.findUnique({
+    where: { userId },
+    select: { id: true },
+  });
+  if (!organizer) {
+    throw new ApiError("Only organizers can create events", 403);
+  }
+
+  const existingEvent = await prisma.event.findFirst({
+    where: { eventName: body.eventName, organizerId: organizer.id },
+  });
+  if (existingEvent) {
+    throw new ApiError("You already have an event with this name", 400);
+  }
+
+  const slug = `${slugify(body.eventName)}-${nanoid()}`;
+  const { secure_url } = await uploadImage(thumbnail);
+
+  const event = await prisma.event.create({
+    data: {
+      ...body,
+      slug,
+      organizerId: organizer.id,
+      availableSeats: body.totalSeats,
+      thumbnail: secure_url,
+    },
+  });
+
+  return { message: "create event success", data: event };
 };
