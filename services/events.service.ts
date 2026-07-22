@@ -26,10 +26,19 @@ export const getEventsService = async (query: GetEventsQuery) => {
   const normalizedCategory = normalizeCategory(category);
   const hasCategoryFilter = Boolean(category) && normalizedCategory !== "ALL";
 
+  const trimmedSearch = search?.trim();
+
   const whereClause: Prisma.EventWhereInput = {
     startDate: { gte: new Date() },
     ...(hasCategoryFilter && {
       category: normalizedCategory as EventCategory,
+    }),
+    ...(trimmedSearch && {
+      OR: [
+        { eventName: { contains: trimmedSearch, mode: "insensitive" } },
+        { location: { contains: trimmedSearch, mode: "insensitive" } },
+        { venue: { contains: trimmedSearch, mode: "insensitive" } },
+      ],
     }),
   };
 
