@@ -49,8 +49,8 @@ export const verifyToken = (
 
 // ─── verifyRole ───────────────────────────────────────────────────────────────
 // Factory: returns a middleware that allows only the listed roles.
-// Usage: router.get('/admin-only', verifyToken, verifyRole('ADMIN'))
-//        router.get('/org-page',   verifyToken, verifyRole('ORGANIZER', 'ADMIN'))
+// Usage: router.get('/customer-page', verifyToken, verifyRole('CUSTOMER'))
+//        router.get('/org-page',      verifyToken, verifyRole('ORGANIZER'))
 
 export const verifyRole = (...allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {

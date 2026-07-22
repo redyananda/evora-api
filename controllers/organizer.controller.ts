@@ -1,6 +1,5 @@
 import type { NextFunction, Request, Response } from "express";
 import {
-  createOrganizerEventService,
   deleteOrganizerEventService,
   getEventParticipantsService,
   getOrganizerDashboardService,
@@ -58,15 +57,6 @@ export const getOrganizerDashboardController = async (
 export const getOrganizerEventsController = async (req: Request, res: Response, next: NextFunction) => {
   try {
     res.status(200).json(await getOrganizerEventsService(userId(req), listQuery(req)));
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const createOrganizerEventController = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const data = await createOrganizerEventService(userId(req), req.body as EventPayload);
-    res.status(201).json({ message: "Event created successfully", data });
   } catch (error) {
     next(error);
   }
