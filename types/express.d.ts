@@ -1,16 +1,19 @@
-// Augment Express's Request interface so TypeScript knows about req.user
-// This file is auto-included via tsconfig.json "typeRoots" / "include" settings.
+// Augment Express's Request interface so TypeScript knows about req.user.
+// Express 5's Request extends the global Express.Request namespace, so the
+// augmentation has to live there — `declare module "express"` does not reach it.
 
 import "express";
 
-declare module "express" {
-  interface Request {
-    user?: {
-      id: number;
-      email: string;
-      role: string;
-      firstName: string;
-      lastName: string;
-    };
+declare global {
+  namespace Express {
+    interface Request {
+      user?: {
+        id: number;
+        email: string;
+        role: string;
+        firstName: string;
+        lastName: string;
+      };
+    }
   }
 }
