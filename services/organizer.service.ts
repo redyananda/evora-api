@@ -6,7 +6,6 @@ import {
 import { prisma } from "../lib/prisma.js";
 import { ApiError } from "../utils/api-error.js";
 import { addCalendarMonths } from "../utils/date.js";
-import { slugify } from "../utils/slug.js";
 import { sendTransactionStatusEmail } from "./email.service.js";
 
 const allowedCategories = new Set<string>(Object.values(EventCategory));
@@ -50,41 +49,30 @@ const parseDate = (value: string | undefined, field: string) => {
   return parsed;
 };
 
-const getUniqueSlug = async (eventName: string) => {
-  const base = slugify(eventName) || "event";
-  let slug = base;
-  let suffix = 2;
-  while (await prisma.event.findUnique({ where: { slug } })) {
-    slug = `${base}-${suffix}`;
-    suffix += 1;
-  }
-  return slug;
-};
-
-const validateEventPayload = (payload: EventPayload, partial = false) => {
-  if (!partial || payload.eventName !== undefined) {
+const validateEventPayload = (payload: EventPayload) => {
+  if (payload.eventName !== undefined) {
     if (!payload.eventName?.trim()) throw new ApiError("Event name is required", 400);
   }
-  if (!partial || payload.description !== undefined) {
+  if (payload.description !== undefined) {
     if (!payload.description?.trim()) throw new ApiError("Description is required", 400);
   }
-  if (!partial || payload.category !== undefined) {
+  if (payload.category !== undefined) {
     if (!payload.category || !allowedCategories.has(payload.category)) {
       throw new ApiError("Invalid event category", 400);
     }
   }
-  if (!partial || payload.venue !== undefined) {
+  if (payload.venue !== undefined) {
     if (!payload.venue?.trim()) throw new ApiError("Venue is required", 400);
   }
-  if (!partial || payload.location !== undefined) {
+  if (payload.location !== undefined) {
     if (!payload.location?.trim()) throw new ApiError("Location is required", 400);
   }
-  if (!partial || payload.price !== undefined) {
+  if (payload.price !== undefined) {
     if (!Number.isInteger(payload.price) || payload.price! < 0) {
       throw new ApiError("Price must be a non-negative integer", 400);
     }
   }
-  if (!partial || payload.totalSeats !== undefined) {
+  if (payload.totalSeats !== undefined) {
     if (!Number.isInteger(payload.totalSeats) || payload.totalSeats! < 1) {
       throw new ApiError("Total seats must be a positive integer", 400);
     }
@@ -279,41 +267,12 @@ export const getOrganizerEventsService = async (
   };
 };
 
-export const createOrganizerEventService = async (
-  userId: number,
-  payload: EventPayload
-) => {
-  validateEventPayload(payload);
-  const organizer = await getOrganizer(userId);
-  const startDate = parseDate(payload.startDate, "Start date");
-  const endDate = parseDate(payload.endDate, "End date");
-  if (endDate <= startDate) throw new ApiError("End date must be after start date", 400);
-
-  return prisma.event.create({
-    data: {
-      eventName: payload.eventName!.trim(),
-      description: payload.description!.trim(),
-      slug: await getUniqueSlug(payload.eventName!),
-      category: payload.category as EventCategory,
-      price: payload.price!,
-      venue: payload.venue!.trim(),
-      location: payload.location!.trim(),
-      startDate,
-      endDate,
-      totalSeats: payload.totalSeats!,
-      availableSeats: payload.totalSeats!,
-      organizerId: organizer.id,
-      thumbnail: payload.thumbnail?.trim() || null,
-    },
-  });
-};
-
 export const updateOrganizerEventService = async (
   userId: number,
   eventId: number,
   payload: EventPayload
 ) => {
-  validateEventPayload(payload, true);
+  validateEventPayload(payload);
   const organizer = await getOrganizer(userId);
   const event = await prisma.event.findFirst({
     where: { id: eventId, organizerId: organizer.id },
