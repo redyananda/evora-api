@@ -6,6 +6,7 @@ import { authRoutes } from "./routes/auth.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 import { profileRoutes } from "./routes/profile.routes.js";
 import { transactionRoutes } from "./routes/transaction.routes.js";
+import { organizerRoutes } from "./routes/organizer.routes.js";
 
 const PORT = process.env.PORT || 8000;
 
@@ -19,6 +20,7 @@ app.use("/auth", authRoutes);
 app.use("/events", eventRoutes);
 app.use("/profile", profileRoutes);
 app.use("/transactions", transactionRoutes);
+app.use("/organizer", organizerRoutes);
 
 // ── Global error handler (must be last) ─────────────────────────────────────
 app.use(errorHandler);
