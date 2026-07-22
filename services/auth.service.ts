@@ -1,29 +1,42 @@
 import * as argon2 from "argon2";
+import { createHash, randomBytes } from "node:crypto";
 import jwt from "jsonwebtoken";
 import { prisma } from "../lib/prisma.js";
 import { ApiError } from "../utils/api-error.js";
+import { addCalendarMonths } from "../utils/date.js";
+import {
+  getReferralCouponDiscount,
+  REFERRAL_POINT_REWARD,
+  syncActivePointBalance,
+} from "./reward.service.js";
 
-// Generate unique 8-char alphanumeric referral code
-function generateReferralCode(): string {
+const generateCode = (length: number): string => {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
   let code = "";
-  for (let i = 0; i < 8; i++) {
+  for (let index = 0; index < length; index += 1) {
     code += chars.charAt(Math.floor(Math.random() * chars.length));
   }
   return code;
-}
+};
 
-async function generateUniqueReferralCode(): Promise<string> {
-  let code = generateReferralCode();
-  let exists = await prisma.user.findUnique({ where: { referralCode: code } });
-  while (exists) {
-    code = generateReferralCode();
-    exists = await prisma.user.findUnique({ where: { referralCode: code } });
+const generateUniqueReferralCode = async (): Promise<string> => {
+  let code = generateCode(8);
+  while (await prisma.user.findUnique({ where: { referralCode: code } })) {
+    code = generateCode(8);
   }
   return code;
-}
+};
 
-// ─── Register ────────────────────────────────────────────────────────────────
+const generateUniqueCouponCode = async (): Promise<string> => {
+  let code = `REF-${generateCode(10)}`;
+  while (await prisma.coupon.findUnique({ where: { code } })) {
+    code = `REF-${generateCode(10)}`;
+  }
+  return code;
+};
+
+const hashResetToken = (token: string): string =>
+  createHash("sha256").update(token).digest("hex");
 
 export interface RegisterPayload {
   firstName: string;
@@ -31,94 +44,116 @@ export interface RegisterPayload {
   email: string;
   password: string;
   role: "CUSTOMER" | "ORGANIZER";
-  referralCode?: string; // code used BY this new user (to get benefit)
-  organizerName?: string; // required when role === ORGANIZER
+  referralCode?: string;
+  organizerName?: string;
 }
 
 export const registerService = async (payload: RegisterPayload) => {
-  const { firstName, lastName, email, password, role, referralCode, organizerName } = payload;
+  const email = payload.email.trim().toLowerCase();
+  const firstName = payload.firstName.trim();
+  const lastName = payload.lastName.trim();
+  const usedReferralCode = payload.referralCode?.trim().toUpperCase();
 
-  // 1. Check email uniqueness
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    throw new ApiError("Email sudah terdaftar", 400);
+  if (!firstName || !lastName) {
+    throw new ApiError("First name and last name are required", 400);
+  }
+  if (payload.password.length < 8) {
+    throw new ApiError("Password must be at least 8 characters", 400);
   }
 
-  // 2. Validate referral code if provided (only customers can use referral)
+  const existing = await prisma.user.findUnique({ where: { email } });
+  if (existing) {
+    throw new ApiError("Email is already registered", 409);
+  }
+
   let referredById: number | undefined;
-  if (referralCode) {
-    if (role !== "CUSTOMER") {
-      throw new ApiError("Hanya pelanggan yang bisa menggunakan kode referral", 400);
+  if (usedReferralCode) {
+    if (payload.role !== "CUSTOMER") {
+      throw new ApiError("Only customers can use a referral code", 400);
     }
-    const referrer = await prisma.user.findUnique({ where: { referralCode } });
+    const referrer = await prisma.user.findUnique({
+      where: { referralCode: usedReferralCode },
+    });
     if (!referrer) {
-      throw new ApiError("Kode referral tidak valid", 400);
+      throw new ApiError("Invalid referral code", 400);
     }
     referredById = referrer.id;
   }
 
-  // 3. Organizer must supply organizerName
-  if (role === "ORGANIZER" && !organizerName?.trim()) {
-    throw new ApiError("Nama organisasi wajib diisi untuk event organizer", 400);
+  if (payload.role === "ORGANIZER" && !payload.organizerName?.trim()) {
+    throw new ApiError("Organization name is required for event organizers", 400);
   }
 
-  // 4. Hash password
-  const hashedPassword = await argon2.hash(password);
-
-  // 5. Generate unique referral code for the new user
+  const hashedPassword = await argon2.hash(payload.password);
   const newReferralCode = await generateUniqueReferralCode();
+  const referralCouponCode = referredById
+    ? await generateUniqueCouponCode()
+    : undefined;
+  const creditedAt = new Date();
+  const rewardExpiresAt = addCalendarMonths(creditedAt, 3);
 
-  // 6. Create user (and organizer profile if needed) in a transaction
-  const user = await prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const created = await tx.user.create({
       data: {
         firstName,
         lastName,
         email,
         password: hashedPassword,
-        userRole: role,
+        userRole: payload.role,
         referralCode: newReferralCode,
         referredById: referredById ?? null,
       },
     });
 
-    // If registered with a referral code, reward the referrer with 10,000 points (90-day expiry)
-    if (referredById) {
-      const expiry = new Date();
-      expiry.setDate(expiry.getDate() + 90);
+    let coupon:
+      | { code: string; discount: number; expiredAt: Date }
+      | undefined;
+
+    if (referredById && referralCouponCode) {
       await tx.point.create({
         data: {
           userId: referredById,
-          amount: 10000,
-          expiredAt: expiry,
+          amount: REFERRAL_POINT_REWARD,
+          expiredAt: rewardExpiresAt,
+          createdAt: creditedAt,
         },
       });
-      // Also update referrer's total points
       await tx.user.update({
         where: { id: referredById },
-        data: { userPoint: { increment: 10000 } },
+        data: { userPoint: { increment: REFERRAL_POINT_REWARD } },
       });
+
+      const createdCoupon = await tx.coupon.create({
+        data: {
+          code: referralCouponCode,
+          discount: getReferralCouponDiscount(),
+          expiredAt: rewardExpiresAt,
+          createdAt: creditedAt,
+          userCoupons: { create: { userId: created.id } },
+        },
+      });
+      coupon = {
+        code: createdCoupon.code,
+        discount: createdCoupon.discount,
+        expiredAt: createdCoupon.expiredAt,
+      };
     }
 
-    // Create organizer profile
-    if (role === "ORGANIZER") {
+    if (payload.role === "ORGANIZER") {
       await tx.organizer.create({
         data: {
           userId: created.id,
-          organizerName: organizerName!.trim(),
+          organizerName: payload.organizerName!.trim(),
         },
       });
     }
 
-    return created;
+    const { password: _password, resetToken: _resetToken, ...safeUser } = created;
+    return { ...safeUser, coupon };
   });
 
-  // 7. Return user without password
-  const { password: _pw, ...safeUser } = user;
-  return safeUser;
+  return result;
 };
-
-// ─── Login ────────────────────────────────────────────────────────────────────
 
 export interface LoginPayload {
   email: string;
@@ -126,37 +161,86 @@ export interface LoginPayload {
 }
 
 export const loginService = async (payload: LoginPayload) => {
-  const { email, password } = payload;
-
-  // 1. Find user
-  const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    throw new ApiError("Email atau password salah", 401);
+  const user = await prisma.user.findUnique({
+    where: { email: payload.email.trim().toLowerCase() },
+  });
+  if (!user || !(await argon2.verify(user.password, payload.password))) {
+    throw new ApiError("Incorrect email or password", 401);
   }
 
-  // 2. Verify password
-  const isValid = await argon2.verify(user.password, password);
-  if (!isValid) {
-    throw new ApiError("Email atau password salah", 401);
-  }
-
-  // 3. Sign JWT
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    throw new ApiError("JWT secret tidak dikonfigurasi", 500);
+    throw new ApiError("JWT secret is not configured", 500);
   }
 
-  const tokenPayload = {
-    id: user.id,
-    email: user.email,
-    role: user.userRole,
-    firstName: user.firstName,
-    lastName: user.lastName,
-  };
+  const userPoint = await syncActivePointBalance(user.id);
+  const token = jwt.sign(
+    {
+      id: user.id,
+      email: user.email,
+      role: user.userRole,
+      firstName: user.firstName,
+      lastName: user.lastName,
+    },
+    secret,
+    { expiresIn: "7d" }
+  );
 
-  const token = jwt.sign(tokenPayload, secret, { expiresIn: "7d" });
+  const {
+    password: _password,
+    resetToken: _resetToken,
+    resetTokenExpires: _resetTokenExpires,
+    ...safeUser
+  } = user;
 
-  const { password: _pw, resetToken: _rt, ...safeUser } = user;
+  return { user: { ...safeUser, userPoint }, token };
+};
 
-  return { user: safeUser, token };
+export const requestPasswordResetService = async (emailInput: string) => {
+  const email = emailInput.trim().toLowerCase();
+  const user = await prisma.user.findUnique({ where: { email } });
+
+  // Keep the public response identical so this endpoint cannot enumerate users.
+  if (!user) return { resetToken: undefined };
+
+  const resetToken = randomBytes(32).toString("hex");
+  const resetTokenExpires = new Date(Date.now() + 60 * 60 * 1000);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      resetToken: hashResetToken(resetToken),
+      resetTokenExpires,
+    },
+  });
+
+  return { resetToken };
+};
+
+export const resetPasswordService = async (
+  token: string,
+  newPassword: string
+) => {
+  if (newPassword.length < 8) {
+    throw new ApiError("New password must be at least 8 characters", 400);
+  }
+
+  const user = await prisma.user.findFirst({
+    where: {
+      resetToken: hashResetToken(token),
+      resetTokenExpires: { gt: new Date() },
+    },
+  });
+  if (!user) {
+    throw new ApiError("The reset token is invalid or has expired", 400);
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      password: await argon2.hash(newPassword),
+      resetToken: null,
+      resetTokenExpires: null,
+    },
+  });
 };

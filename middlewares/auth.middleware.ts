@@ -14,16 +14,19 @@ export const verifyToken = (
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      throw new ApiError("Akses ditolak: token tidak ditemukan", 401);
+      throw new ApiError("Access denied: token not found", 401);
     }
 
-    const token = authHeader.split(" ")[1];
+    const token = authHeader.slice("Bearer ".length).trim();
+    if (!token) {
+      throw new ApiError("Access denied: token not found", 401);
+    }
     const secret = process.env.JWT_SECRET;
     if (!secret) {
-      throw new ApiError("JWT secret tidak dikonfigurasi", 500);
+      throw new ApiError("JWT secret is not configured", 500);
     }
 
-    const decoded = jwt.verify(token, secret) as {
+    const decoded = jwt.verify(token, secret) as unknown as {
       id: number;
       email: string;
       role: string;
@@ -34,10 +37,10 @@ export const verifyToken = (
     req.user = decoded;
     next();
   } catch (error) {
-    if (error instanceof jwt.JsonWebTokenError) {
-      next(new ApiError("Token tidak valid", 401));
-    } else if (error instanceof jwt.TokenExpiredError) {
-      next(new ApiError("Token sudah kedaluwarsa", 401));
+    if (error instanceof jwt.TokenExpiredError) {
+      next(new ApiError("Token has expired", 401));
+    } else if (error instanceof jwt.JsonWebTokenError) {
+      next(new ApiError("Invalid token", 401));
     } else {
       next(error);
     }
@@ -52,13 +55,13 @@ export const verifyToken = (
 export const verifyRole = (...allowedRoles: string[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
-      return next(new ApiError("Akses ditolak: tidak terautentikasi", 401));
+      return next(new ApiError("Access denied: user is not authenticated", 401));
     }
 
     if (!allowedRoles.includes(req.user.role)) {
       return next(
         new ApiError(
-          `Akses ditolak: hanya ${allowedRoles.join(", ")} yang diizinkan`,
+          `Access denied: only ${allowedRoles.join(", ")} roles are allowed`,
           403
         )
       );
