@@ -12,11 +12,53 @@ const TAX_RATE = 0.11;
 const PAYMENT_WINDOW_HOURS = 2;
 const CONFIRMATION_WINDOW_DAYS = 3;
 
+const consumeUserPoints = async (
+  tx: Prisma.TransactionClient,
+  userId: number,
+  amount: number,
+) => {
+  if (amount <= 0) return;
+
+  const now = new Date();
+  const active = await tx.point.findMany({
+    where: { userId, expiredAt: { gt: now }, amount: { gt: 0 } },
+    orderBy: { expiredAt: "asc" },
+  });
+
+  let remaining = amount;
+  for (const entry of active) {
+    if (remaining <= 0) break;
+    const take = Math.min(entry.amount, remaining);
+    await tx.point.update({
+      where: { id: entry.id },
+      data: { amount: entry.amount - take },
+    });
+    remaining -= take;
+  }
+
+  if (remaining > 0) {
+    throw new ApiError("Insufficient point balance", 400);
+  }
+
+  await tx.user.update({
+    where: { id: userId },
+    data: { userPoint: { decrement: amount } },
+  });
+};
+
 export const createTransactionService = async (
   userId: number,
   body: CreateTransactionSchema,
 ) => {
-  const { eventId, quantity, voucherCode } = body;
+  const { eventId, quantity, voucherCode, couponCode, pointsToUse } = body;
+  const now = new Date();
+
+  if (voucherCode && couponCode) {
+    throw new ApiError(
+      "Only one promo code (voucher or coupon) can be applied",
+      400,
+    );
+  }
 
   const event = await prisma.event.findUnique({ where: { id: eventId } });
   if (!event) {
@@ -32,7 +74,6 @@ export const createTransactionService = async (
 
   let voucher: { id: number; discount: number } | null = null;
   if (voucherCode) {
-    const now = new Date();
     const found = await prisma.voucher.findUnique({
       where: { eventId_code: { eventId, code: voucherCode } },
     });
@@ -48,19 +89,60 @@ export const createTransactionService = async (
     voucher = { id: found.id, discount: found.discount };
   }
 
+  let coupon: { userCouponId: number; couponId: number; discount: number } | null =
+    null;
+  if (couponCode) {
+    const userCoupon = await prisma.userCoupon.findFirst({
+      where: {
+        userId,
+        isUsed: false,
+        coupon: { code: couponCode, expiredAt: { gt: now } },
+      },
+      include: { coupon: { select: { id: true, discount: true } } },
+    });
+
+    if (!userCoupon) {
+      throw new ApiError("Coupon is invalid, expired, or already used", 400);
+    }
+    coupon = {
+      userCouponId: userCoupon.id,
+      couponId: userCoupon.coupon.id,
+      discount: userCoupon.coupon.discount,
+    };
+  }
+
+  let pointBalance = 0;
+  const requestedPoints = pointsToUse ?? 0;
+  if (requestedPoints > 0) {
+    const aggregate = await prisma.point.aggregate({
+      where: { userId, expiredAt: { gt: now }, amount: { gt: 0 } },
+      _sum: { amount: true },
+    });
+    pointBalance = aggregate._sum.amount ?? 0;
+  }
+
 
   const subtotal = event.price * quantity;
-  const discount = voucher ? Math.min(voucher.discount, subtotal) : 0;
-  const tax = Math.round(subtotal * TAX_RATE);
-  const finalPrice = subtotal - discount + tax;
 
+  const promoDiscount = Math.min(
+    voucher?.discount ?? coupon?.discount ?? 0,
+    subtotal,
+  );
+  const voucherDiscount = voucher ? promoDiscount : 0;
+  const couponDiscount = coupon ? promoDiscount : 0;
+
+  const taxableAmount = subtotal - promoDiscount;
+  const tax = Math.round(taxableAmount * TAX_RATE);
+  const bill = taxableAmount + tax;
+
+  const pointsUsed = Math.min(requestedPoints, pointBalance, bill);
+  const finalPrice = bill - pointsUsed;
 
   const isFree = finalPrice <= 0;
 
   const paymentDeadline = new Date(
     Date.now() + PAYMENT_WINDOW_HOURS * 60 * 60 * 1000,
   );
-
 
   const transaction = await prisma.$transaction(async (tx) => {
     const seatUpdate = await tx.event.updateMany({
@@ -81,13 +163,29 @@ export const createTransactionService = async (
       }
     }
 
+    if (coupon) {
+      const couponUpdate = await tx.userCoupon.updateMany({
+        where: { id: coupon.userCouponId, isUsed: false },
+        data: { isUsed: true, usedAt: new Date() },
+      });
+      if (couponUpdate.count === 0) {
+        throw new ApiError("Coupon is no longer available", 400);
+      }
+    }
+
+    if (pointsUsed > 0) {
+      await consumeUserPoints(tx, userId, pointsUsed);
+    }
+
     return tx.transaction.create({
       data: {
         userId,
         eventId,
         voucherId: voucher?.id ?? null,
+        couponId: coupon?.couponId ?? null,
         quantity,
         totalPrice: subtotal,
+        pointUsed: pointsUsed > 0 ? pointsUsed : null,
         finalPrice,
         paymentDeadline,
         ...(isFree
@@ -101,7 +199,17 @@ export const createTransactionService = async (
     message: "Order created successfully",
     data: {
       ...transaction,
-      breakdown: { subtotal, tax, discount, total: finalPrice },
+      breakdown: {
+        subtotal,
+        voucherDiscount,
+        couponDiscount,
+        discount: promoDiscount,
+        taxableAmount,
+        tax,
+        bill,
+        pointsUsed,
+        total: finalPrice,
+      },
     },
   };
 };
@@ -274,8 +382,7 @@ export const sweepStaleTransactionsService = async () => {
     const nextStatus = isAwaitingPayment
       ? TransactionStatus.EXPIRED
       : TransactionStatus.CANCELED;
-    // Guard on the deadline that actually governs this status, so the
-    // conditional update stays consistent with the query above.
+
     const deadlineGuard = isAwaitingPayment
       ? { paymentDeadline: { lt: new Date() } }
       : { confirmationDeadline: { lt: new Date() } };
