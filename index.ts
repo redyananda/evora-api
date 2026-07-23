@@ -7,8 +7,23 @@ import { errorHandler } from "./middlewares/error.middleware.js";
 import { profileRoutes } from "./routes/profile.routes.js";
 import { transactionRoutes } from "./routes/transaction.routes.js";
 import { organizerRoutes } from "./routes/organizer.routes.js";
+import { sweepStaleTransactionsService } from "./services/transaction.service.js";
 
 const PORT = process.env.PORT || 8000;
+
+// Auto-expire unpaid orders and auto-cancel orders the organizer never acted on.
+const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+
+const runStaleTransactionSweep = async () => {
+  try {
+    const { expired, canceled } = await sweepStaleTransactionsService();
+    if (expired || canceled) {
+      console.log(`[Sweep] expired=${expired} canceled=${canceled}`);
+    }
+  } catch (error) {
+    console.error("[Sweep] failed", error);
+  }
+};
 
 const app = express();
 
@@ -27,4 +42,6 @@ app.use(errorHandler);
 
 app.listen(PORT, () => {
   console.log(`Server running on port : ${PORT}`);
+  void runStaleTransactionSweep();
+  setInterval(runStaleTransactionSweep, SWEEP_INTERVAL_MS);
 });

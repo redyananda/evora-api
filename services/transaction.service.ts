@@ -1,12 +1,16 @@
+import type { Prisma } from "../generated/prisma/client.js";
 import { TransactionStatus } from "../generated/prisma/enums.js";
 import { uploadImage } from "../lib/cloudinary.js";
 import { prisma } from "../lib/prisma.js";
 import { ApiError } from "../utils/api-error.js";
+import { addCalendarMonths } from "../utils/date.js";
 import { type CreateTransactionSchema } from "../validators/transaction.validator.js";
 
 const TAX_RATE = 0.11;
 
+
 const PAYMENT_WINDOW_HOURS = 2;
+const CONFIRMATION_WINDOW_DAYS = 3;
 
 export const createTransactionService = async (
   userId: number,
@@ -50,6 +54,9 @@ export const createTransactionService = async (
   const tax = Math.round(subtotal * TAX_RATE);
   const finalPrice = subtotal - discount + tax;
 
+
+  const isFree = finalPrice <= 0;
+
   const paymentDeadline = new Date(
     Date.now() + PAYMENT_WINDOW_HOURS * 60 * 60 * 1000,
   );
@@ -83,6 +90,9 @@ export const createTransactionService = async (
         totalPrice: subtotal,
         finalPrice,
         paymentDeadline,
+        ...(isFree
+          ? { status: TransactionStatus.DONE, paidAt: new Date() }
+          : {}),
       },
     });
   });
@@ -154,14 +164,149 @@ export const uploadPaymentProofService = async (
 
   const { secure_url } = await uploadImage(proof);
 
+  const confirmationDeadline = new Date(
+    Date.now() + CONFIRMATION_WINDOW_DAYS * 24 * 60 * 60 * 1000,
+  );
+
   const updated = await prisma.transaction.update({
     where: { id: transactionId },
     data: {
       paymentProof: secure_url,
       paidAt: new Date(),
       status: TransactionStatus.WAITING_FOR_ADMIN_CONFIRMATION,
+      confirmationDeadline,
     },
   });
 
   return { message: "Payment proof uploaded successfully", data: updated };
+};
+
+const restoreTransactionResources = async (
+  tx: Prisma.TransactionClient,
+  transaction: {
+    userId: number;
+    eventId: number;
+    quantity: number;
+    voucherId: number | null;
+    couponId: number | null;
+    pointUsed: number | null;
+  },
+) => {
+  await tx.event.update({
+    where: { id: transaction.eventId },
+    data: { availableSeats: { increment: transaction.quantity } },
+  });
+
+  if (transaction.voucherId) {
+    await tx.voucher.update({
+      where: { id: transaction.voucherId },
+      data: { availableVoucher: { increment: 1 } },
+    });
+  }
+
+  if (transaction.couponId) {
+    const usedCoupon = await tx.userCoupon.findFirst({
+      where: {
+        userId: transaction.userId,
+        couponId: transaction.couponId,
+        isUsed: true,
+      },
+      orderBy: { usedAt: "desc" },
+    });
+    if (usedCoupon) {
+      await tx.userCoupon.update({
+        where: { id: usedCoupon.id },
+        data: { isUsed: false, usedAt: null },
+      });
+    }
+  }
+
+  if (transaction.pointUsed && transaction.pointUsed > 0) {
+    const refundedAt = new Date();
+    await tx.point.create({
+      data: {
+        userId: transaction.userId,
+        amount: transaction.pointUsed,
+        expiredAt: addCalendarMonths(refundedAt, 3),
+        createdAt: refundedAt,
+      },
+    });
+    await tx.user.update({
+      where: { id: transaction.userId },
+      data: { userPoint: { increment: transaction.pointUsed } },
+    });
+  }
+};
+
+export const sweepStaleTransactionsService = async () => {
+  const now = new Date();
+  const stale = await prisma.transaction.findMany({
+    where: {
+      OR: [
+        {
+          status: TransactionStatus.WAITING_FOR_PAYMENT,
+          paymentDeadline: { lt: now },
+        },
+        {
+          status: TransactionStatus.WAITING_FOR_ADMIN_CONFIRMATION,
+          confirmationDeadline: { lt: now },
+        },
+      ],
+    },
+    select: {
+      id: true,
+      status: true,
+      userId: true,
+      eventId: true,
+      quantity: true,
+      voucherId: true,
+      couponId: true,
+      pointUsed: true,
+    },
+  });
+
+  let expired = 0;
+  let canceled = 0;
+
+  for (const transaction of stale) {
+    const isAwaitingPayment =
+      transaction.status === TransactionStatus.WAITING_FOR_PAYMENT;
+    const nextStatus = isAwaitingPayment
+      ? TransactionStatus.EXPIRED
+      : TransactionStatus.CANCELED;
+    // Guard on the deadline that actually governs this status, so the
+    // conditional update stays consistent with the query above.
+    const deadlineGuard = isAwaitingPayment
+      ? { paymentDeadline: { lt: new Date() } }
+      : { confirmationDeadline: { lt: new Date() } };
+
+    try {
+      const changed = await prisma.$transaction(
+        async (tx) => {
+          const result = await tx.transaction.updateMany({
+            where: {
+              id: transaction.id,
+              status: transaction.status,
+              ...deadlineGuard,
+            },
+            data: { status: nextStatus },
+          });
+          if (result.count !== 1) return false;
+
+          await restoreTransactionResources(tx, transaction);
+          return true;
+        },
+        { isolationLevel: "Serializable" },
+      );
+
+      if (changed) {
+        if (nextStatus === TransactionStatus.EXPIRED) expired++;
+        else canceled++;
+      }
+    } catch (error) {
+      console.error(`[Sweep failed] Transaction #${transaction.id}`, error);
+    }
+  }
+
+  return { expired, canceled };
 };
