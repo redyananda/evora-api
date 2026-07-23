@@ -5,6 +5,7 @@ import {
   getUserTransactionsService,
   uploadPaymentProofService,
 } from "../services/transaction.service.js";
+import { createReviewService } from "../services/review.service.js";
 import { ApiError } from "../utils/api-error.js";
 
 export const createTransactionController = async (
@@ -53,4 +54,15 @@ export const uploadPaymentProofController = async (
 
   const result = await uploadPaymentProofService(transactionId, userId, proof);
   res.status(200).send(result);
+};
+
+export const createReviewController = async (req: Request, res: Response) => {
+  const userId = req.user!.id;
+  const transactionId = Number(req.params.id);
+  if (!Number.isInteger(transactionId) || transactionId <= 0) {
+    throw new ApiError("Invalid transaction id", 400);
+  }
+
+  const result = await createReviewService(userId, transactionId, req.body);
+  res.status(201).send(result);
 };

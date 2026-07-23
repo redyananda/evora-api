@@ -4,6 +4,7 @@ import { uploadImage } from "../lib/cloudinary.js";
 import { prisma } from "../lib/prisma.js";
 import type { PaginationQueryParams } from "../types/pagination.js";
 import { ApiError } from "../utils/api-error.js";
+import { nowInJakarta } from "../utils/date.js";
 import { slugify } from "../utils/slug.js";
 import { type CreateEventSchema } from "../validators/event.validator.js";
 import { nanoid } from "nanoid";
@@ -29,7 +30,8 @@ export const getEventsService = async (query: GetEventsQuery) => {
   const trimmedSearch = search?.trim();
 
   const whereClause: Prisma.EventWhereInput = {
-    startDate: { gte: new Date() },
+
+    endDate: { gte: nowInJakarta() },
     ...(hasCategoryFilter && {
       category: normalizedCategory as EventCategory,
     }),
