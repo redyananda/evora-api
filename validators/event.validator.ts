@@ -1,8 +1,6 @@
 import z from 'zod'
 import { EventCategory } from '../generated/prisma/enums.js'
 
-// Sent as multipart/form-data (the thumbnail is a file), so every text field
-// arrives as a string — numbers and dates have to be coerced.
 export const createEventSchema = z
     .object({
         eventName: z.string().min(1, "Title is required"),
