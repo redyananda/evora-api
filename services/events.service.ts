@@ -68,6 +68,7 @@ export const getEventBySlugService = async (slug: string) => {
     include: {
       organizer: {
         select: {
+          id: true,
           organizerName: true,
           organizerLogo: true,
           rating: true,
