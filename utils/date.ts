@@ -1,3 +1,10 @@
+export const nowInJakarta = (): Date => {
+  const wallClock = new Date().toLocaleString("sv-SE", {
+    timeZone: "Asia/Jakarta",
+  });
+  return new Date(`${wallClock.replace(" ", "T")}Z`);
+};
+
 export const addCalendarMonths = (date: Date, months: number): Date => {
   const result = new Date(date);
   const originalDay = result.getUTCDate();

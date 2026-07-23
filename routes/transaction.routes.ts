@@ -1,5 +1,6 @@
 import { Router } from "express";
 import {
+  createReviewController,
   createTransactionController,
   getTransactionByIdController,
   getUserTransactionsController,
@@ -9,6 +10,7 @@ import { verifyRole, verifyToken } from "../middlewares/auth.middleware.js";
 import { upload } from "../middlewares/upload.middleware.js";
 import { validateBody } from "../middlewares/validate.middleware.js";
 import { createTransactionSchema } from "../validators/transaction.validator.js";
+import { createReviewSchema } from "../validators/review.validator.js";
 
 export const transactionRoutes = Router();
 
@@ -28,4 +30,10 @@ transactionRoutes.patch(
   "/:id/payment-proof",
   upload(5).single("paymentProof"),
   uploadPaymentProofController,
+);
+
+transactionRoutes.post(
+  "/:id/review",
+  validateBody(createReviewSchema),
+  createReviewController,
 );

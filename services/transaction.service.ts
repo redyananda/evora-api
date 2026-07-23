@@ -3,7 +3,7 @@ import { TransactionStatus } from "../generated/prisma/enums.js";
 import { uploadImage } from "../lib/cloudinary.js";
 import { prisma } from "../lib/prisma.js";
 import { ApiError } from "../utils/api-error.js";
-import { addCalendarMonths } from "../utils/date.js";
+import { addCalendarMonths, nowInJakarta } from "../utils/date.js";
 import { type CreateTransactionSchema } from "../validators/transaction.validator.js";
 
 const TAX_RATE = 0.11;
@@ -63,6 +63,10 @@ export const createTransactionService = async (
   const event = await prisma.event.findUnique({ where: { id: eventId } });
   if (!event) {
     throw new ApiError("Event not found", 404);
+  }
+
+  if (event.endDate < nowInJakarta()) {
+    throw new ApiError("This event has already ended", 400);
   }
 
   if (event.availableSeats < quantity) {
@@ -244,6 +248,12 @@ export const getUserTransactionsService = async (userId: number) => {
           endDate: true,
           price: true,
           thumbnail: true,
+          organizer: {
+            select: {
+              id: true,
+              organizerName: true,
+            },
+          },
         },
       },
       voucher: {
@@ -256,6 +266,14 @@ export const getUserTransactionsService = async (userId: number) => {
         select: {
           code: true,
           discount: true,
+        },
+      },
+      review: {
+        select: {
+          id: true,
+          rating: true,
+          comment: true,
+          createdAt: true,
         },
       },
     },
