@@ -223,9 +223,10 @@ model Transaction {
   totalPrice      Int               @map("total_price")
   pointUsed       Int?              @map("point_used")
   finalPrice      Int               @map("final_price")
-  paymentProof    String?           @map("payment_proof")
-  paymentDeadline DateTime          @map("payment_deadline")
-  paidAt          DateTime?         @map("paid_at")
+  paymentProof         String?           @map("payment_proof")
+  paymentDeadline      DateTime          @map("payment_deadline")
+  confirmationDeadline DateTime?         @map("confirmation_deadline")
+  paidAt               DateTime?         @map("paid_at")
   createdAt       DateTime          @default(now()) @map("created_at")
   updatedAt       DateTime          @updatedAt @map("updated_at")
 
