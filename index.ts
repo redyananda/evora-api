@@ -7,6 +7,7 @@ import { errorHandler } from "./middlewares/error.middleware.js";
 import { profileRoutes } from "./routes/profile.routes.js";
 import { transactionRoutes } from "./routes/transaction.routes.js";
 import { organizerRoutes } from "./routes/organizer.routes.js";
+import { publicOrganizerRoutes } from "./routes/publicOrganizer.routes.js";
 import { sweepStaleTransactionsService } from "./services/transaction.service.js";
 
 const PORT = process.env.PORT || 8000;
@@ -36,6 +37,7 @@ app.use("/events", eventRoutes);
 app.use("/profile", profileRoutes);
 app.use("/transactions", transactionRoutes);
 app.use("/organizer", organizerRoutes);
+app.use("/organizers", publicOrganizerRoutes);
 
 // ── Global error handler (must be last) ─────────────────────────────────────
 app.use(errorHandler);

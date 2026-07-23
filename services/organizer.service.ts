@@ -125,6 +125,60 @@ const getPeriodConfig = (period: StatisticPeriod, date?: string) => {
   };
 };
 
+export const getPublicOrganizerProfileService = async (organizerId: number) => {
+  const organizer = await prisma.organizer.findUnique({
+    where: { id: organizerId },
+    select: {
+      id: true,
+      organizerName: true,
+      organizerDescription: true,
+      organizerLogo: true,
+      createdAt: true,
+      _count: { select: { events: true } },
+    },
+  });
+  if (!organizer) throw new ApiError("Organizer not found", 404);
+
+  const reviews = await prisma.review.findMany({
+    where: { transaction: { event: { organizerId } } },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      rating: true,
+      comment: true,
+      createdAt: true,
+      user: { select: { firstName: true, lastName: true, profilePicture: true } },
+      transaction: { select: { event: { select: { eventName: true } } } },
+    },
+  });
+
+  const totalReviews = reviews.length;
+  const rating =
+    totalReviews === 0
+      ? 0
+      : Math.round(
+          (reviews.reduce((sum, review) => sum + review.rating, 0) / totalReviews) *
+            10
+        ) / 10;
+
+  const { _count, ...profile } = organizer;
+  return {
+    ...profile,
+    rating,
+    totalReviews,
+    totalEvents: _count.events,
+    reviews: reviews.map((review) => ({
+      id: review.id,
+      name: `${review.user.firstName} ${review.user.lastName}`.trim(),
+      avatar: review.user.profilePicture,
+      rating: review.rating,
+      comment: review.comment,
+      eventName: review.transaction.event.eventName,
+      createdAt: review.createdAt,
+    })),
+  };
+};
+
 export const getOrganizerDashboardService = async (
   userId: number,
   periodInput?: string,

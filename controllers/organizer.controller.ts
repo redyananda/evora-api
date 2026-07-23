@@ -5,6 +5,7 @@ import {
   getOrganizerDashboardService,
   getOrganizerEventsService,
   getOrganizerTransactionsService,
+  getPublicOrganizerProfileService,
   updateOrganizerEventService,
   updateTransactionStatusService,
   type EventPayload,
@@ -36,6 +37,19 @@ const listQuery = (req: Request) => ({
     : {}),
   ...(req.query.eventId ? { eventId: positiveInt(req.query.eventId) } : {}),
 });
+
+export const getPublicOrganizerProfileController = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+) => {
+  try {
+    const data = await getPublicOrganizerProfileService(positiveInt(req.params.id));
+    res.status(200).json({ data });
+  } catch (error) {
+    next(error);
+  }
+};
 
 export const getOrganizerDashboardController = async (
   req: Request,
