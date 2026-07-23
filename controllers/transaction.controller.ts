@@ -2,6 +2,7 @@ import type { Request, Response } from "express";
 import {
   createTransactionService,
   getTransactionByIdService,
+  getUserTransactionsService,
   uploadPaymentProofService,
 } from "../services/transaction.service.js";
 import { ApiError } from "../utils/api-error.js";
@@ -13,6 +14,15 @@ export const createTransactionController = async (
   const userId = req.user!.id;
   const result = await createTransactionService(userId, req.body);
   res.status(201).send(result);
+};
+
+export const getUserTransactionsController = async (
+  req: Request,
+  res: Response,
+) => {
+  const userId = req.user!.id;
+  const result = await getUserTransactionsService(userId);
+  res.status(200).send(result);
 };
 
 export const getTransactionByIdController = async (

@@ -214,6 +214,56 @@ export const createTransactionService = async (
   };
 };
 
+export const getUserTransactionsService = async (userId: number) => {
+  const transactions = await prisma.transaction.findMany({
+    where: { userId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      id: true,
+      userId: true,
+      eventId: true,
+      quantity: true,
+      status: true,
+      totalPrice: true,
+      pointUsed: true,
+      finalPrice: true,
+      paymentProof: true,
+      paymentDeadline: true,
+      confirmationDeadline: true,
+      paidAt: true,
+      createdAt: true,
+      updatedAt: true,
+      event: {
+        select: {
+          id: true,
+          eventName: true,
+          slug: true,
+          venue: true,
+          location: true,
+          startDate: true,
+          endDate: true,
+          price: true,
+          thumbnail: true,
+        },
+      },
+      voucher: {
+        select: {
+          code: true,
+          discount: true,
+        },
+      },
+      coupon: {
+        select: {
+          code: true,
+          discount: true,
+        },
+      },
+    },
+  });
+
+  return { data: transactions };
+};
+
 export const getTransactionByIdService = async (
   transactionId: number,
   userId: number,

@@ -2,6 +2,7 @@ import { Router } from "express";
 import {
   createTransactionController,
   getTransactionByIdController,
+  getUserTransactionsController,
   uploadPaymentProofController,
 } from "../controllers/transaction.controller.js";
 import { verifyRole, verifyToken } from "../middlewares/auth.middleware.js";
@@ -18,6 +19,8 @@ transactionRoutes.post(
   validateBody(createTransactionSchema),
   createTransactionController,
 );
+
+transactionRoutes.get("/", getUserTransactionsController);
 
 transactionRoutes.get("/:id", getTransactionByIdController);
 
